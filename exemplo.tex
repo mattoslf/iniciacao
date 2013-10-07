@@ -1,0 +1,320 @@
+\documentclass[10pt,a4paper]{report}
+\usepackage[hmargin=2cm,vmargin=3.5cm,bmargin=2cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{makeidx}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{indentfirst}
+\usepackage[pdftex]{hyperref}
+\usepackage{csvsimple}
+\usepackage{color}
+\usepackage{mathtools}
+\usepackage{float}
+
+% Pseudocode
+\usepackage{algpseudocode}
+
+
+% Headers and Footers
+\usepackage{fancyhdr}
+
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+
+\lstset{ %
+  backgroundcolor=\color{white},   % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}
+  basicstyle=\footnotesize,        % the size of the fonts that are used for the code
+  breakatwhitespace=false,         % sets if automatic breaks should only happen at whitespace
+  breaklines=true,                 % sets automatic line breaking
+  captionpos=b,                    % sets the caption-position to bottom
+  commentstyle=\color{mygreen},    % comment style
+  deletekeywords={...},            % if you want to delete keywords from the given language
+  escapeinside={\%*}{*)},          % if you want to add LaTeX within your code
+  extendedchars=true,              % lets you use non-ASCII characters; for 8-bits encodings only, does not work with UTF-8
+  frame=single,                    % adds a frame around the code
+  keywordstyle=\color{blue},       % keyword style
+%  language=Octave,                 % the language of the code
+  morekeywords={*,...},            % if you want to add more keywords to the set
+  numbers=left,                    % where to put the line-numbers; possible values are (none, left, right)
+  numbersep=5pt,                   % how far the line-numbers are from the code
+  numberstyle=\tiny\color{mygray}, % the style that is used for the line-numbers
+  rulecolor=\color{black},         % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
+  showspaces=false,                % show spaces everywhere adding particular underscores; it overrides 'showstringspaces'
+  showstringspaces=false,          % underline spaces within strings only
+  showtabs=false,                  % show tabs within strings adding particular underscores
+  stepnumber=2,                    % the step between two line-numbers. If it's 1, each line will be numbered
+  stringstyle=\color{mymauve},     % string literal style
+  tabsize=2,                       % sets default tabsize to 2 spaces
+  title=\lstname                   % show the filename of files included with \lstinputlisting; also try caption instead of title
+}
+
+\lstdefinestyle{base}{
+  language=C++,
+  emptylines=1,
+  breaklines=true,
+  basicstyle=\ttfamily\color{black},
+  moredelim=**[is][\color{blue}]{@}{@},
+  basicstyle=\small
+}
+
+% Headers and Footers
+\pagestyle{fancy} % fancy style
+\lhead{\rightmark} % left header
+\rhead{\leftmark} % right header
+\lfoot{} % left footer
+\cfoot{\textbf{\thepage}} % central footer
+\rfoot{} % right footer
+% Headers and Footers
+
+\makeindex
+
+% define the title
+\author{}
+\title{MC458 - Laboratório 1: Algoritmos de Ordenação}
+\date{September 28, 2013}
+\begin{document}
+
+% generates the title
+\maketitle
+
+% insert the table of contents
+\tableofcontents
+
+
+\chapter{Métodos}
+
+\section{Improved cache memory use}
+
+One of the greatest optimizations we achieved, was the better use of the cache memory. Some data intensive reading algorithms can benefit from the cache memory, by accessing sequential memory addresses. With lesser cache misses, the algorithm has no need to search the data in the RAM memory, which is much slower than cache memories.
+
+
+\chapter{Otimizações}
+\newpage
+\section{Sgemm}
+
+\begin{center}
+\begin{minipage}{.48\textwidth}\small
+\begin{lstlisting}[caption=Parboil sequential source code for sgemm,style=base]
+
+	for (int mm = 0; mm < m; ++mm) {
+		for (int nn = 0; nn < n; ++nn) {
+			float c = 0.0f;
+			for (int i = 0; i < k; ++i) {
+				float a = A[mm + i * lda]; 
+				float b = B[nn + i * ldb];
+				c += a * b;
+			}
+			C[mm+nn*ldc] = C[mm+nn*ldc] * beta + alpha * c;
+		}
+	}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}\small
+\begin{lstlisting}[caption=Parboil parallel source code for sgemm,style=base]
+
+	@#pragma omp parallel for collapse (2)@
+	for (int mm = 0; mm < m; ++mm) {
+		for (int nn = 0; nn < n; ++nn) {
+			float c = 0.0f;
+			for (int i = 0; i < k; ++i) {
+				float a = A[mm + i * lda]; 
+				float b = B[nn + i * ldb];
+				c += a * b;
+			}
+			C[mm+nn*ldc] = C[mm+nn*ldc] * beta + alpha * c;
+		}
+	}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+For the matrices multiplication algorithm, the matrices are represented as arrays, so, we improved the memory access by transposing the matrices, this way, in the inner loop, the index i is only added instead of multiplied to calculate the line and column position of the matrix in the array. We needed then to aloccate auxiliary arrays to represent the transposed matrices and then transpose while making the copy from one array to another. \\
+
+To avoid the increase of the execution time of the algorithm, we parallelized this transpositioning. This can be done because it has no loop-carried dependencies and the data is distributed almost equally for all threads without concurrency, in other words, it is high parallelizable. \\
+
+We created the variables aux1 and aux2 because in the inner loop, these values are constant and in serial and parboil parallel versions, these constant is calculated every iteration of the inner loop wasting some time in unnecessary multiplications. The access to the array is almost sequential after this changes. using better the memory, caused some great improvement in execution time of this algoritm.\\
+
+\begin{lstlisting}[caption=Our parallel source code for sgemm,style=base]
+
+	tb = (float *) malloc(ldb * n * sizeof(float));
+	@# pragma omp parallel for collapse(2)@
+	for (i = 0; i < ldb; i++)
+		for (j = 0; j < n; j++)
+			tb[j * n + i] = B[i * n + j];
+
+	ta = (float *) malloc(lda * m * sizeof(float));
+	@# pragma omp parallel for collapse(2)@
+	for (i = 0; i < lda; i++)
+		for (j = 0; j < m; j++)
+			ta[j * m + i] = A[i * m + j];
+
+	@# pragma omp parallel for private(nn, c, i, a, b, mm) collapse(2) schedule (static)@
+	for (mm = 0; mm < m; ++mm) {
+		for (nn = 0; nn < n; ++nn) {
+			c = 0.0f;
+			aux1 = mm * lda;
+			aux2 = nn * ldb;
+			for (i = 0; i < k; ++i) {
+				c += ta[i + aux1] * tb[i + aux2];
+			}
+			C[mm+nn*ldc] = C[mm+nn*ldc] * beta + alpha * c;
+		}
+	}
+\end{lstlisting}
+
+\newpage
+\chapter{Análise e Resultados}
+
+\begin{itemize}
+\item Vetor Ordenado
+\item Vetor Invertido
+\item Vetor Constante
+\item Vetor Aleatório
+\end{itemize}
+
+\section{Algoritmos $\mathbf{O(n^2)}$}
+
+\subsection{Bubble Sort}
+
+%\begin{figure}[H]
+%\includegraphics[width=\textwidth]{Imagens/bubble.png}
+%\caption{Bubble Sort para diversos formatos de vetores}
+%\end{figure}
+
+\begin{samepage}
+\section{Comparações dos Algoritmos}
+\begin{table}[H]\small
+\caption{Tabela dos tempos para os vetores aleatórios}
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline 
+N & Bubble Sort (us) & Insertion Sort (us) & Merge Sort (us) & Heap Sort (us) & Quick Sort (us) \\ 
+\hline
+20 & 0.54 & 0.38 & 2.18 & 0.89 & 0.33 \\
+\hline
+40 & 2.06 & 1.28 & 4.74 & 2.09 & 0.85 \\
+\hline
+60 & 5.41 & 4.38 & 2.64 & 3.38 & 1.25 \\
+\hline
+80 & 5.19 & 6.54 & 3.71 & 4.66 & 2.21 \\
+\hline
+100 & 6.30 & 5.42 & 4.69 & 4.15 & 0.97 \\
+\hline
+120 & 9.86 & 5.62 & 5.61 & 2.64 & 1.22 \\
+\hline
+140 & 13.29 & 8.16 & 7.16 & 3.21 & 1.62 \\
+\hline
+160 & 18.98 & 10.39 & 7.75 & 3.97 & 1.71 \\
+\hline
+180 & 24.19 & 13.20 & 8.81 & 4.58 & 1.87 \\
+\hline
+200 & 31.50 & 17.26 & 9.77 & 5.07 & 2.18 \\
+\hline
+220 & 39.08 & 18.71 & 10.73 & 5.64 & 2.30 \\
+\hline
+240 & 46.73 & 24.89 & 11.97 & 6.38 & 2.54 \\
+\hline
+260 & 55.65 & 26.57 & 13.28 & 6.89 & 3.06 \\
+\hline
+280 & 62.90 & 32.87 & 14.36 & 7.59 & 3.59 \\
+\hline
+300 & 71.83 & 36.10 & 15.41 & 8.38 & 3.74 \\
+\hline
+320 & 82.09 & 38.36 & 16.36 & 8.99 & 3.78 \\
+\hline
+340 & 89.37 & 48.51 & 17.87 & 9.87 & 4.25 \\
+\hline
+360 & 103.90 & 52.94 & 19.01 & 10.53 & 4.32 \\
+\hline
+380 & 114.72 & 57.14 & 20.40 & 11.57 & 5.18 \\
+\hline
+400 & 127.54 & 65.93 & 21.87 & 12.13 & 4.84 \\
+\hline
+420 & 138.09 & 77.04 & 23.34 & 13.28 & 5.16 \\
+\hline
+440 & 150.81 & 77.11 & 25.22 & 13.84 & 5.84 \\
+\hline
+460 & 163.94 & 85.78 & 27.67 & 14.32 & 6.30 \\
+\hline
+480 & 177.77 & 95.85 & 28.10 & 15.50 & 7.15 \\
+\hline
+500 & 192.97 & 97.70 & 31.44 & 15.79 & 6.24 \\
+\hline
+520 & 209.49 & 108.34 & 32.95 & 17.27 & 6.62 \\
+\hline
+540 & 219.24 & 119.94 & 35.29 & 18.61 & 7.30 \\
+\hline
+560 & 237.04 & 125.29 & 36.40 & 18.91 & 7.54 \\
+\hline
+580 & 247.24 & 140.73 & 38.26 & 20.31 & 8.09 \\
+\hline
+600 & 270.45 & 147.62 & 40.02 & 20.88 & 8.90 \\
+\hline
+620 & 284.33 & 149.17 & 42.12 & 21.62 & 9.62 \\
+\hline
+640 & 309.54 & 166.93 & 43.10 & 22.76 & 9.35 \\
+\hline
+660 & 315.12 & 178.41 & 45.89 & 23.40 & 10.78 \\
+\hline
+680 & 342.33 & 188.27 & 48.52 & 25.07 & 11.13 \\
+\hline
+700 & 358.19 & 197.32 & 49.73 & 26.47 & 11.25 \\
+\hline
+720 & 373.96 & 215.76 & 51.21 & 26.79 & 12.10 \\
+\hline
+740 & 397.99 & 222.46 & 53.13 & 27.65 & 14.54 \\
+\hline
+760 & 411.69 & 232.85 & 54.71 & 29.08 & 13.95 \\
+\hline
+780 & 439.17 & 245.02 & 58.36 & 29.81 & 15.68 \\
+\hline
+800 & 461.42 & 264.66 & 59.94 & 31.70 & 15.90 \\
+\hline
+820 & 476.24 & 276.48 & 61.90 & 32.29 & 17.69 \\
+\hline
+840 & 496.48 & 285.15 & 64.12 & 34.03 & 18.62 \\
+\hline
+860 & 515.91 & 292.42 & 65.49 & 33.94 & 20.76 \\
+\hline
+880 & 539.34 & 309.45 & 68.73 & 35.85 & 22.05 \\
+\hline
+900 & 559.42 & 322.18 & 69.30 & 35.84 & 23.26 \\
+\hline
+920 & 592.42 & 332.22 & 72.63 & 37.46 & 24.07 \\
+\hline
+940 & 616.82 & 353.43 & 74.38 & 38.75 & 25.46 \\
+\hline
+960 & 645.81 & 372.20 & 76.63 & 40.61 & 27.16 \\
+\hline
+980 & 668.59 & 385.35 & 80.79 & 40.99 & 27.79 \\
+\hline
+1000 & 687.16 & 403.35 & 82.07 & 41.39 & 30.73 \\
+\hline 
+\end{tabular} 
+\end{center}
+\end{table}
+\end{samepage}
+
+\chapter{Referências Bibliográficas}
+
+\begin{itemize}
+\item \begin{verbatim}http://en.wikipedia.org/wiki/Bubble_sort\end{verbatim}
+\item \begin{verbatim}http://en.wikipedia.org/wiki/Insertion_sort\end{verbatim}
+\item \begin{verbatim}http://www.princeton.edu/~achaney/tmve/wiki100k/docs/Insertion_sort.html\end{verbatim}
+\item \begin{verbatim}http://en.wikipedia.org/wiki/Merge_sort\end{verbatim}
+\item \begin{verbatim}http://www.princeton.edu/~achaney/tmve/wiki100k/docs/Merge_sort.html\end{verbatim}
+\item \begin{verbatim}http://en.wikipedia.org/wiki/Heapsort\end{verbatim}
+\item \begin{verbatim}http://pages.cs.wisc.edu/~paton/readings/Old/fall01/HEAP-SORT.htm\end{verbatim}
+\item \begin{verbatim}http://en.wikipedia.org/wiki/Quicksort\end{verbatim}
+\item \begin{verbatim}http://www.personal.kent.edu/~rmuhamma/Algorithms/MyAlgorithms/Sorting/quickSort.htm\end{verbatim}
+\end{itemize}
+
+
+\end{document}
