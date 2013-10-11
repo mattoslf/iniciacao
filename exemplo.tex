@@ -60,7 +60,7 @@
   breaklines=true,
   basicstyle=\ttfamily\color{black},
   moredelim=**[is][\color{blue}]{@}{@},
-  basicstyle=\small
+  basicstyle=\footnotesize
 }
 
 % Headers and Footers
@@ -76,7 +76,7 @@
 
 % define the title
 \author{}
-\title{MC458 - Laboratório 1: Algoritmos de Ordenação}
+\title{}
 \date{September 28, 2013}
 \begin{document}
 
@@ -84,22 +84,25 @@
 \maketitle
 
 % insert the table of contents
-\tableofcontents
+	\tableofcontents
+
+\chapter{Methods}
+
+\section{Improved Memory Use}
+
+One of the greatest optimizations we applied in several algorithms was the better use of the cache memory and the main memory. Some data intensive reading algorithms can benefit from the cache memory by accessing sequential adresses from the main memory, with lesser cache misses, the algorithm has no need to search the data in the main memory, which is much slower than low level memories. \\
+
+By changing the way the memory is accessed, the performance was improved in the sequential version of some algorithms, improving even the performance over some simple parallelized versions.\\
+
+Several algorithms in this benchmark set have nested loops and access some structure, like a array or a matrix, inside the inner loop. Also, some algorithms have inefficient index choice for the inner loop, turning the memory access into a slow and repetitious task. Some changes that improved the performance include the remapping of the structure or/and the better choice of the order for the indexes in the nested loops. \\
 
 
-\chapter{Métodos}
+\chapter{Optimizations}
 
-\section{Improved cache memory use}
-
-One of the greatest optimizations we achieved, was the better use of the cache memory. Some data intensive reading algorithms can benefit from the cache memory, by accessing sequential memory addresses. With lesser cache misses, the algorithm has no need to search the data in the RAM memory, which is much slower than cache memories.
-
-
-\chapter{Otimizações}
 \newpage
-\section{Sgemm}
-
+\section{sgemm}
 \begin{center}
-\begin{minipage}{.48\textwidth}\small
+\begin{minipage}{.48\textwidth}
 \begin{lstlisting}[caption=Parboil sequential source code for sgemm,style=base]
 
 	for (int mm = 0; mm < m; ++mm) {
@@ -107,7 +110,7 @@ One of the greatest optimizations we achieved, was the better use of the cache m
 			float c = 0.0f;
 			for (int i = 0; i < k; ++i) {
 				float a = A[mm + i * lda]; 
-				float b = B[nn + i * ldb];
+				float b = B[nn + i * ldb];		
 				c += a * b;
 			}
 			C[mm+nn*ldc] = C[mm+nn*ldc] * beta + alpha * c;
@@ -116,7 +119,7 @@ One of the greatest optimizations we achieved, was the better use of the cache m
 \end{lstlisting}
 \end{minipage}
 \hfill
-\begin{minipage}{.48\textwidth}\small
+\begin{minipage}{.48\textwidth}
 \begin{lstlisting}[caption=Parboil parallel source code for sgemm,style=base]
 
 	@#pragma omp parallel for collapse (2)@
@@ -135,14 +138,15 @@ One of the greatest optimizations we achieved, was the better use of the cache m
 \end{minipage}
 \end{center}
 
-For the matrices multiplication algorithm, the matrices are represented as arrays, so, we improved the memory access by transposing the matrices, this way, in the inner loop, the index i is only added instead of multiplied to calculate the line and column position of the matrix in the array. We needed then to aloccate auxiliary arrays to represent the transposed matrices and then transpose while making the copy from one array to another. \\
+For the matrices multiplication algorithm, it is used an array-represented structure, so, we improved the memory access by transposing the matrices. This way, the index 'i' in the inner loop, is only added instead of multiplied to calculate the correct mapping of the element in the matrix to the array-represented matrix. We needed then to aloccate auxiliary arrays to represent the transposed matrices and then transpose while making the copy from one array to another. \\
 
-To avoid the increase of the execution time of the algorithm, we parallelized this transpositioning. This can be done because it has no loop-carried dependencies and the data is distributed almost equally for all threads without concurrency, in other words, it is high parallelizable. \\
+To avoid the increase of the execution time of the algorithm, we parallelized this transposition. This can be done because it has no loop-carried dependencies and the data is distributed almost equally for all threads without concurrency, in other words, it is high parallelizable. \\
 
-We created the variables aux1 and aux2 because in the inner loop, these values are constant and in serial and parboil parallel versions, these constant is calculated every iteration of the inner loop wasting some time in unnecessary multiplications. The access to the array is almost sequential after this changes. using better the memory, caused some great improvement in execution time of this algoritm.\\
+We created the variables aux1 and aux2 because in the inner loop, these values are constant. The original versions, the sequential and the stock parallel, calculate these constant every iteration of the inner loop, wasting some time in unnecessary multiplications. \\
 
-\begin{lstlisting}[caption=Our parallel source code for sgemm,style=base]
+The access to the array is almost sequential after this changes. Using better the memory, caused some great improvement in execution time of this algoritm. By applying these techniques we could ran our parallel version around 10.7 times faster than sequential version and 3.9 times faster than the stock parallel version.\\
 
+\begin{lstlisting}[caption=Array-represented matrices transposition,style=base]
 	tb = (float *) malloc(ldb * n * sizeof(float));
 	@# pragma omp parallel for collapse(2)@
 	for (i = 0; i < ldb; i++)
@@ -154,7 +158,9 @@ We created the variables aux1 and aux2 because in the inner loop, these values a
 	for (i = 0; i < lda; i++)
 		for (j = 0; j < m; j++)
 			ta[j * m + i] = A[i * m + j];
+\end{lstlisting}
 
+\begin{lstlisting}[caption=Our parallel source code for sgemm,style=base]
 	@# pragma omp parallel for private(nn, c, i, a, b, mm) collapse(2) schedule (static)@
 	for (mm = 0; mm < m; ++mm) {
 		for (nn = 0; nn < n; ++nn) {
@@ -170,151 +176,244 @@ We created the variables aux1 and aux2 because in the inner loop, these values a
 \end{lstlisting}
 
 \newpage
-\chapter{Análise e Resultados}
+\section{stencil}
 
-\begin{itemize}
-\item Vetor Ordenado
-\item Vetor Invertido
-\item Vetor Constante
-\item Vetor Aleatório
-\end{itemize}
-
-\section{Algoritmos $\mathbf{O(n^2)}$}
-
-\subsection{Bubble Sort}
-
-%\begin{figure}[H]
-%\includegraphics[width=\textwidth]{Imagens/bubble.png}
-%\caption{Bubble Sort para diversos formatos de vetores}
-%\end{figure}
-
-\begin{samepage}
-\section{Comparações dos Algoritmos}
-\begin{table}[H]\small
-\caption{Tabela dos tempos para os vetores aleatórios}
 \begin{center}
-\begin{tabular}{|c|c|c|c|c|c|}
-\hline 
-N & Bubble Sort (us) & Insertion Sort (us) & Merge Sort (us) & Heap Sort (us) & Quick Sort (us) \\ 
-\hline
-20 & 0.54 & 0.38 & 2.18 & 0.89 & 0.33 \\
-\hline
-40 & 2.06 & 1.28 & 4.74 & 2.09 & 0.85 \\
-\hline
-60 & 5.41 & 4.38 & 2.64 & 3.38 & 1.25 \\
-\hline
-80 & 5.19 & 6.54 & 3.71 & 4.66 & 2.21 \\
-\hline
-100 & 6.30 & 5.42 & 4.69 & 4.15 & 0.97 \\
-\hline
-120 & 9.86 & 5.62 & 5.61 & 2.64 & 1.22 \\
-\hline
-140 & 13.29 & 8.16 & 7.16 & 3.21 & 1.62 \\
-\hline
-160 & 18.98 & 10.39 & 7.75 & 3.97 & 1.71 \\
-\hline
-180 & 24.19 & 13.20 & 8.81 & 4.58 & 1.87 \\
-\hline
-200 & 31.50 & 17.26 & 9.77 & 5.07 & 2.18 \\
-\hline
-220 & 39.08 & 18.71 & 10.73 & 5.64 & 2.30 \\
-\hline
-240 & 46.73 & 24.89 & 11.97 & 6.38 & 2.54 \\
-\hline
-260 & 55.65 & 26.57 & 13.28 & 6.89 & 3.06 \\
-\hline
-280 & 62.90 & 32.87 & 14.36 & 7.59 & 3.59 \\
-\hline
-300 & 71.83 & 36.10 & 15.41 & 8.38 & 3.74 \\
-\hline
-320 & 82.09 & 38.36 & 16.36 & 8.99 & 3.78 \\
-\hline
-340 & 89.37 & 48.51 & 17.87 & 9.87 & 4.25 \\
-\hline
-360 & 103.90 & 52.94 & 19.01 & 10.53 & 4.32 \\
-\hline
-380 & 114.72 & 57.14 & 20.40 & 11.57 & 5.18 \\
-\hline
-400 & 127.54 & 65.93 & 21.87 & 12.13 & 4.84 \\
-\hline
-420 & 138.09 & 77.04 & 23.34 & 13.28 & 5.16 \\
-\hline
-440 & 150.81 & 77.11 & 25.22 & 13.84 & 5.84 \\
-\hline
-460 & 163.94 & 85.78 & 27.67 & 14.32 & 6.30 \\
-\hline
-480 & 177.77 & 95.85 & 28.10 & 15.50 & 7.15 \\
-\hline
-500 & 192.97 & 97.70 & 31.44 & 15.79 & 6.24 \\
-\hline
-520 & 209.49 & 108.34 & 32.95 & 17.27 & 6.62 \\
-\hline
-540 & 219.24 & 119.94 & 35.29 & 18.61 & 7.30 \\
-\hline
-560 & 237.04 & 125.29 & 36.40 & 18.91 & 7.54 \\
-\hline
-580 & 247.24 & 140.73 & 38.26 & 20.31 & 8.09 \\
-\hline
-600 & 270.45 & 147.62 & 40.02 & 20.88 & 8.90 \\
-\hline
-620 & 284.33 & 149.17 & 42.12 & 21.62 & 9.62 \\
-\hline
-640 & 309.54 & 166.93 & 43.10 & 22.76 & 9.35 \\
-\hline
-660 & 315.12 & 178.41 & 45.89 & 23.40 & 10.78 \\
-\hline
-680 & 342.33 & 188.27 & 48.52 & 25.07 & 11.13 \\
-\hline
-700 & 358.19 & 197.32 & 49.73 & 26.47 & 11.25 \\
-\hline
-720 & 373.96 & 215.76 & 51.21 & 26.79 & 12.10 \\
-\hline
-740 & 397.99 & 222.46 & 53.13 & 27.65 & 14.54 \\
-\hline
-760 & 411.69 & 232.85 & 54.71 & 29.08 & 13.95 \\
-\hline
-780 & 439.17 & 245.02 & 58.36 & 29.81 & 15.68 \\
-\hline
-800 & 461.42 & 264.66 & 59.94 & 31.70 & 15.90 \\
-\hline
-820 & 476.24 & 276.48 & 61.90 & 32.29 & 17.69 \\
-\hline
-840 & 496.48 & 285.15 & 64.12 & 34.03 & 18.62 \\
-\hline
-860 & 515.91 & 292.42 & 65.49 & 33.94 & 20.76 \\
-\hline
-880 & 539.34 & 309.45 & 68.73 & 35.85 & 22.05 \\
-\hline
-900 & 559.42 & 322.18 & 69.30 & 35.84 & 23.26 \\
-\hline
-920 & 592.42 & 332.22 & 72.63 & 37.46 & 24.07 \\
-\hline
-940 & 616.82 & 353.43 & 74.38 & 38.75 & 25.46 \\
-\hline
-960 & 645.81 & 372.20 & 76.63 & 40.61 & 27.16 \\
-\hline
-980 & 668.59 & 385.35 & 80.79 & 40.99 & 27.79 \\
-\hline
-1000 & 687.16 & 403.35 & 82.07 & 41.39 & 30.73 \\
-\hline 
-\end{tabular} 
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil sequential source code for stencil,style=base]
+
+	int i, j, k;
+	for(i=1;i<nx-1;i++) {
+		for(j=1;j<ny-1;j++) {
+			for(k=1;k<nz-1;k++) {
+				Anext[Index3D (nx, ny, i, j, k)] = 
+				(A0[Index3D (nx, ny, i, j, k + 1)] +
+				A0[Index3D (nx, ny, i, j, k - 1)] +
+				A0[Index3D (nx, ny, i, j + 1, k)] +
+				A0[Index3D (nx, ny, i, j - 1, k)] +
+				A0[Index3D (nx, ny, i + 1, j, k)] +
+				A0[Index3D (nx, ny, i - 1, j, k)])*c1
+				- A0[Index3D (nx, ny, i, j, k)]*c0;
+			}
+		}
+	}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil parallel source code for stencil,style=base]
+
+	int i;
+	@#pragma omp parallel for@
+	for(i=1;i<nx-1;i++) {
+		int j, k;
+		for(j=1;j<ny-1;j++) {
+			for(k=1;k<nz-1;k++) {
+				//#pragma omp critical
+				Anext[Index3D (nx, ny, i, j, k)] = 
+				(A0[Index3D (nx, ny, i, j, k + 1)] +
+				A0[Index3D (nx, ny, i, j, k - 1)] +
+				A0[Index3D (nx, ny, i, j + 1, k)] +
+				A0[Index3D (nx, ny, i, j - 1, k)] +
+				A0[Index3D (nx, ny, i + 1, j, k)] +
+				A0[Index3D (nx, ny, i - 1, j, k)])*c1
+				- A0[Index3D (nx, ny, i, j, k)]*c0;
+			}
+		}
+	}
+\end{lstlisting}
+\end{minipage}\\
+\begin{lstlisting}[caption=Converts from 3D indices to array-represented cube,style=base]	
+	#define Index3D(_nx,_ny,_i,_j,_k) ((_i)+_nx*((_j)+_ny*(_k)))
+\end{lstlisting}
 \end{center}
-\end{table}
-\end{samepage}
 
-\chapter{Referências Bibliográficas}
+The source codes above, specially the listing 2.7, show that the access to the cube elements are made by using the inner loop counter to multiply some constant and then map the cube to an array. The sequential access to memory is lost and the performance is impaired by sucessive cache misses. \\
 
-\begin{itemize}
-\item \begin{verbatim}http://en.wikipedia.org/wiki/Bubble_sort\end{verbatim}
-\item \begin{verbatim}http://en.wikipedia.org/wiki/Insertion_sort\end{verbatim}
-\item \begin{verbatim}http://www.princeton.edu/~achaney/tmve/wiki100k/docs/Insertion_sort.html\end{verbatim}
-\item \begin{verbatim}http://en.wikipedia.org/wiki/Merge_sort\end{verbatim}
-\item \begin{verbatim}http://www.princeton.edu/~achaney/tmve/wiki100k/docs/Merge_sort.html\end{verbatim}
-\item \begin{verbatim}http://en.wikipedia.org/wiki/Heapsort\end{verbatim}
-\item \begin{verbatim}http://pages.cs.wisc.edu/~paton/readings/Old/fall01/HEAP-SORT.htm\end{verbatim}
-\item \begin{verbatim}http://en.wikipedia.org/wiki/Quicksort\end{verbatim}
-\item \begin{verbatim}http://www.personal.kent.edu/~rmuhamma/Algorithms/MyAlgorithms/Sorting/quickSort.htm\end{verbatim}
-\end{itemize}
+Basically, we exchanged the index from the inner loop with the index of the outer loop. Then we simply parallelized the outer loop, which made our version run around 25.4 times faster than sequential version and around 15.2 times faster than the stock parallel version.\\
 
+\begin{lstlisting}[caption=Our parallel source code for stencil,style=base]
+	
+	int i, j, k;	
+	@#pragma omp parallel for private(j, i)@
+	for(k=1;k<nz-1;k++) {
+		for(j=1;j<ny-1;j++) {
+			for(i=1;i<nx-1;i++) {
+				Anext[Index3D (nx, ny, i, j, k)] = 
+				(A0[Index3D (nx, ny, i, j, k + 1)] +
+				A0[Index3D (nx, ny, i, j, k - 1)] +
+				A0[Index3D (nx, ny, i, j + 1, k)] +
+				A0[Index3D (nx, ny, i, j - 1, k)] +
+				A0[Index3D (nx, ny, i + 1, j, k)] +
+				A0[Index3D (nx, ny, i - 1, j, k)])*c1
+				- A0[Index3D (nx, ny, i, j, k)]*c0;
+			}
+		}
+	}
+\end{lstlisting}
+
+\newpage
+\section{mri-gridding}
+
+\begin{center}
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Auxiliary function source code for sequential mri-gridding,style=base]
+
+		unsigned int k;
+		for(k=0; k<size; ++k){
+			// compute value to evaluate kernel at
+			// v in the range 0:(_width/2)^2
+			v = (((float)k)/((float)size))*cutoff2;
+
+			// compute kernel value and store
+			(*LUT)[k] = kernel_value_CPU(beta*sqrt(1.0-(v/cutoff2)));
+		}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Auxiliary function source code for parallel mri-gridding,style=base]
+
+		unsigned int k;
+		@#pragma omp parallel for private(v)@
+		for(k=0; k<size; ++k){
+			// compute value to evaluate kernel at
+			// v in the range 0:(_width/2)^2
+			v = (((float)k)/((float)size))*cutoff2;
+
+			// compute kernel value and store
+			(*LUT)[k] = kernel_value_CPU(beta*sqrt(1.0-(v/cutoff2)));
+		}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\begin{center}
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil sequential main loop for mri-gridding,style=base]
+
+	int i;
+	for (i=0; i < n; i++){
+		ReconstructionSample pt = sample[i];
+
+		float kx = pt.kX;
+		float ky = pt.kY;
+		float kz = pt.kZ;
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil parallel main loop for mri-gridding,style=base]
+
+	int i;
+
+	@#pragma omp parallel for private(NxL, NxH, NyL, NyH, NzL, NzH, dz2, nz, dx2, nx, dy2, ny, idxZ, idxY, dy2dz2, idx0, v, idx, w)@
+	for (i=0; i < n; i++){
+		ReconstructionSample pt = sample[i];
+
+		float kx = pt.kX;
+		float ky = pt.kY;
+		float kz = pt.kZ;
+\end{lstlisting}
+
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil sequential data processing code for mri-gridding,style=base]
+		/* grid data */
+		gridData[idx].real += (w*pt.real);
+		gridData[idx].imag += (w*pt.imag);
+
+		/* estimate sample density */
+		sampleDensity[idx] += 1.0;
+	}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Parboil parallel data processing code for mri-gridding,style=base]
+		/* grid data */
+		@#pragma omp critical (c1)@
+		gridData[idx].real += (w*pt.real);
+		@#pragma omp critical (c2)@
+		gridData[idx].imag += (w*pt.imag);
+
+		/* estimate sample density */
+		@#pragma omp critical (c3)@
+		sampleDensity[idx] += 1.0;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+For this algorithm we basically allocated the lock-free structure and the accumulations are made privately and without concurrency for each thread. When all threads have finished the work, the final result is obtained by accumulating the partial results from each thread. Luckly, there is no loop-carried dependency, and the partial and the final accumulations are high parallelizable.\\
+
+Our parallel version, with the lock-free vector accumulation, have a execution time around 2.5 times faster than the sequential and around 41.6 times faster than the stock parallel version. This happens because of the critical section pragmas, as we can see on listing 2.14. Each thread must execute this regions with a lock to obtain the correct result. This way, all other threads wait to get the lock and enter the critical region. By using this lock with 8 threads, there is a lot of concurrency and racing conditions, making the stock parallel the slowest version we tested, slower even the sequential version.\\
+
+\newpage
+\begin{center}
+\begin{lstlisting}[caption=Our parallel lock-free structure allocation for mri-gridding,style=base]
+
+	@#pragma omp parallel private(NxL, NxH, NyL, NyH, NzL, NzH, dz2, nz, dx2,         \
+		nx, dy2, ny, idxZ, idxY, dy2dz2, idx0, v, idx, w, t_id)@
+	{
+		@#pragma omp single@
+		{
+			if (big_table == NULL)
+			{
+				//			  printf("Alocou!\n");
+				size = params.gridSize[0]*params.gridSize[1]*params.gridSize[2];
+				numthreads = omp_get_max_threads();	  
+				big_table = (cmplx **) malloc(numthreads * sizeof(cmplx *));
+				big_table2 = (float **) malloc(numthreads * sizeof(float *));
+			}
+		}
+
+		@#pragma omp for@
+		for (i = 0; i < numthreads; i++)
+		{
+			big_table[i] = (cmplx *) malloc(size * sizeof(cmplx));
+			big_table2[i] = (float *) malloc(size * sizeof(float));
+		}
+		@#pragma omp for collapse(2)@
+		for (i = 0; i < numthreads; i++)
+			for (j = 0; j < size; j++)
+			{
+				big_table[i][j].real = 0;
+				big_table[i][j].imag = 0;
+				big_table2[i][j] = 0;
+			}
+
+		t_id = omp_get_thread_num();
+
+		@#pragma omp for@
+		for (i = 0; i < n; i++)
+		{
+			ReconstructionSample pt = sample[i];
+
+			float kx = pt.kX;
+			float ky = pt.kY;
+			float kz = pt.kZ;
+\end{lstlisting}
+
+\begin{lstlisting}[caption=Our parallel partial data processing code for mri-gridding,style=base]
+		/* grid data */
+		big_table[t_id][idx].real += (w*pt.real);
+		big_table[t_id][idx].imag += (w*pt.imag);
+
+		/* estimate sample density */
+		big_table2[t_id][idx] += 1.0;		
+\end{lstlisting}
+
+\begin{lstlisting}[caption=Our parallel final data processing code for mri-gridding,style=base]
+	#pragma omp for private(j)
+	for (i = 0; i < size; i++)
+		for (j = 0; j < numthreads; j++)
+		{
+			gridData[i].real += big_table[j][i].real;
+			gridData[i].imag += big_table[j][i].imag;
+			sampleDensity[i] += big_table2[j][i];
+		}
+\end{lstlisting}
+\end{center}
 
 \end{document}
