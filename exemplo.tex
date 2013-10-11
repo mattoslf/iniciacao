@@ -1,7 +1,7 @@
 \documentclass[10pt,a4paper]{report}
 \usepackage[hmargin=2cm,vmargin=3.5cm,bmargin=2cm]{geometry}
 \usepackage[utf8]{inputenc}
-\usepackage[portuguese]{babel}
+\usepackage[english]{babel}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -75,9 +75,9 @@
 \makeindex
 
 % define the title
-\author{}
-\title{}
-\date{September 28, 2013}
+\author{Lucas Henrique Morais\\ Luís Felipe Mattos}
+\title{\textbf{Parboil:} an optimization effort}
+\date{October 11, 2013}
 \begin{document}
 
 % generates the title
@@ -86,10 +86,99 @@
 % insert the table of contents
 	\tableofcontents
 
-\chapter{Methods}
+\chapter{General Methods}
 
-\section{Improved Memory Use}
+In this study we identified two optimization techniques that are very broad in scope and that would be recurrently employed in our solutions for each benchmark. These are as follows:
+\begin{itemize}
+\item Lock-free vector accumulation
+\item Prescient memory access
+\end{itemize}
 
+Which we describe in detail in the following sections.
+\section{Lock-free vector accumulation}
+A very general optimization technique that was consistently employed in the studied set of benchmarks was lock-free vector accumulation. Let us introduce the topic with the following example:
+Usually, one could trivially avoid declaring a critical section on a piece of code like this:
+	     
+\begin{lstlisting}[caption=0-dimensional accumulation,style=base]
+int foo( ... ){
+	#pragma omp parallel
+	for(i = 0; i < size; i++){
+		//many lines of code
+		#pragma omp critical section
+		bin += aux;
+	}
+}
+\end{lstlisting}	     
+	     
+Usually, one could trivially avoid declaring the critical section above by:
+\begin{enumerate}
+\item Declaring a private variable for each thread.
+\item Requiring each thread to accumulate on its own version of the variable.
+\item Consolidating the partial sums on the original variable.
+\end{enumerate}
+	  
+The present report then suggests a generalization of that approach for not only lock-free accumulation on unidimensional arrays, but for n-dimensional vectors, with negligible resulting overhead.
+\newpage
+\begin{lstlisting}[caption=4-dimensional accumulation,style=base]
+int foo( ... ){
+	#pragma omp parallel
+	for(i = 0; i < size; i++){
+		//many lines of code
+		#pragma omp critical section
+		bin[p1][p2][p3][p4] += aux;
+	}
+}
+\end{lstlisting}	     
+	     
+The overall strategy is comprised of three main elements, as follows:
+\begin{enumerate}
+\item Creation of an \((n+1)\)-dimensional auxiliar vector.
+\item Private accumulation of each thread's work on its respective n-dimensional data strip.
+\item Parallel consolidation of the results on the target (original) vector.
+\end{enumerate}
+(* Here we assume a $n$-dimensional target vector.)
+After the first one, each step is triggered by the end of the preceeding one. Each is now described in detail:	     
+\begin{description}
+\item[Replication]
+At the end of this step, we want each thread to have its own copy of the original structure. This can be easily accomplished by allocating a vector wrapping k copies of the original D.S. We then have a $(n+1)$ dimensional vector on memory.	     	   
+\item[Private accumulation]
+Each thread then works on its own data share and privately accumulate on its own data strip. Generally, a $j$-numbered thread shall access memory locations of the format \[V_{aux}[j][*][*]\ldots[*],\]where $*$ can assume any available value.
+\item[Consolidation]
+By this time, all working data has been consumed, and we are left with the task of summing up all the partial results on the original structure, which we can fortunately do in parallel for any n greater than zero, as follows:
+\begin{description}	     	   
+\item[Partitioning]
+Each thread is associated with a subset of the target structure memory positions.
+This can be automatically achieved with OpenMP \emph{parallel for} pragma.
+\item[Actual consolidation]
+Then, each thread computes the following expression:	     	   
+\[V_{final}\{\pi_j\}=V_{aux}[0]\{\pi_j\}+V_{aux}[1]\{\pi_j\}+\ldots+V_{aux}[n-1]\{\pi_j\}\]
+	     	   where \(n \) is the total number of working threads and \(\pi_j\) indicates the partition of the memory positions that j-numbered thread is responsible for. This expression is iteratively computed. As partition sets are always disjoint, it follows that this step can be trivially parallelized with, for example, a \emph{parallel for} pragma as suggested above.
+\newline 
+\newline
+For our example, we would now have:
+
+\begin{lstlisting}[caption=4-dimensional accumulation,style=base]
+int foo( ... ){
+	#pragma omp parallel
+	for(i = 0; i < size; i++){
+		//many lines of code
+		big_bin[thread_num][p1][p2][p3][p4] += aux;
+	}
+	
+	#pragma omp parallel
+	for (i = 0; i < num_threads; i++)
+		for (j = 0; j < j_max; j++)
+			for (k = 0; k < k_max; k++)
+				for (l = 0; l < l_max; l++)
+					for	(m = 0; m < m_max; m++){
+						bin = big_bin[i][j][k][l][m];
+					}
+}
+\end{lstlisting}	 
+	     	   
+\end{description}
+\end{description}
+\section{Prescient memory access}
 One of the greatest optimizations we applied in several algorithms was the better use of the cache memory and the main memory. Some data intensive reading algorithms can benefit from the cache memory by accessing sequential adresses from the main memory, with lesser cache misses, the algorithm has no need to search the data in the main memory, which is much slower than low level memories. \\
 
 By changing the way the memory is accessed, the performance was improved in the sequential version of some algorithms, improving even the performance over some simple parallelized versions.\\
@@ -414,6 +503,183 @@ Our parallel version, with the lock-free vector accumulation, have a execution t
 			sampleDensity[i] += big_table2[j][i];
 		}
 \end{lstlisting}
+
+
 \end{center}
+\section{cutcp}
+Basically, we implemented an auxiliary data structure that allowed for a lock-free version of the core routine of the benchmark, which eliminated the critical section pointed out in line 12. By doing that, we accomplished a speed up of around 25\% in relation to the stock parallelization \((\)omp\_base\()\).
+
+\begin{lstlisting}[caption=cutcp serial version source,style=base]
+for (gindex = 0;  gindex < ncell;  gindex++) {
+    for (n = first[gindex];  n != -1;  n = next[n]) {
+    //ommited code
+    	for (k = ka;  k <= kb;  k++, dz += gridspacing) {
+    	//ommited code
+    		for (j = ja;  j <= jb;  j++, dy += gridspacing) {
+    		//ommited code
+    			for (i = ia;  i <= ib;  i++, pg++, dx += gridspacing) {
+    					r2 = dx*dx + dydz2;
+   						 s = (1.f - r2 * inv_a2);
+   						 e = q * (1/sqrtf(r2)) * s * s;
+							*pg += e;
+          }
+        }
+      }
+    }
+  }
+\end{lstlisting}
+
+
+\begin{lstlisting}[caption=Original parallel cutcp source code,style=base]
+#pragma omp parallel for private ( ... )
+for (gindex = 0;  gindex < ncell;  gindex++) {
+    for (n = first[gindex];  n != -1;  n = next[n]) {
+    //ommited code
+    	for (k = ka;  k <= kb;  k++, dz += gridspacing) {
+    	//ommited code
+    		for (j = ja;  j <= jb;  j++, dy += gridspacing) {
+    		//ommited code
+    			for (i = ia;  i <= ib;  i++, pg++, dx += gridspacing) {
+					s = (1.f - r2 * inv_a2);
+					e = q * (1/sqrtf(r2)) * s * s;
+					@#pragma omp atomic@
+					*pg += e;
+          }
+        }
+      }
+    }
+  }
+\end{lstlisting}
+
+
+\begin{lstlisting}[caption=Our parallel source code for cutcp,,style=base]
+  nthreads = omp_get_max_threads();  
+  big_table = (float **) malloc(nthreads * sizeof(float *));
+  for (i = 0; i < nthreads; i++)
+  	big_table[i] = calloc(lattice->size, sizeof(float));
+  	
+ @#pragma omp parallel private ( ... ) @{
+	g = big_table[omp_get_thread_num()];
+		#pragma omp for
+			for (gindex = 0;  gindex < ncell;  gindex++) {
+				for (n = first[gindex];  n != -1;  n = next[n]) {
+				//ommited code
+					for (k = ka;  k <= kb;  k++, dz += gridspacing) {
+					//ommited code
+						for (j = ja;  j <= jb;  j++, dy += gridspacing) {
+						//ommited code
+							for (i = ia, m = index;  i <= ib;  i++, m++, dx += gridspacing) {
+								pg[m] += (q/sqrtf(r2)) * (1.f - r2 * inv_a2) * (1.f - r2 * inv_a2);
+							}
+						}
+					}
+				}
+			}	  
+	  @#pragma omp for private(i)@
+	  for (m = 0; m < nthreads; m++)
+		  for (i = 0; i < lattice->size; i++)
+		  	lattice->lattice[i] += big_table[m][i];
+} 	
+\end{lstlisting}
+
+\section{tpacf}
+Here we carried out a strategy very akin to that indicated in the last section,which mainly consisted of rethinking the vector accumulation in such a way that critical sections could be circumvented.
+
+\begin{center}
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=tpacf serial version source,style=base]
+int doCompute( ... ){  
+	for (i = 0; i < ((doSelf) ? n1-1 : n1); i++){
+		for (j = ((doSelf) ? i+1 : 0); j < n2; j++){	  
+			while (max > min+1){
+				k = (min + max) / 2;
+				if (dot >= binb[k]) 
+					max = k;
+				else 
+					min = k;
+			};
+			if (dot >= binb[min])
+				data_bins[min] += 1;
+			else if (dot < binb[max]) 
+				data_bins[max+1] += 1;
+			else 
+				data_bins[max] += 1;
+		}
+	}
+}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=tpacf stock parallel solution,style=base]
+int doCompute( ... ){  
+	for (i = 0; i < ((doSelf) ? n1-1 : n1); i++){
+		@#pragma omp parallel for @
+		for (j = ((doSelf) ? i+1 : 0); j < n2; j++){	  
+			while (max > min+1){
+				k = (min + max) / 2;
+				if (dot >= binb[k]) 
+					max = k;
+				else 
+					min = k;
+			};
+			@#pragma omp critical@
+			if (dot >= binb[min])
+				data_bins[min] += 1;
+			else if (dot < binb[max]) 
+				data_bins[max+1] += 1;
+			else 
+				data_bins[max] += 1;
+		}
+	}
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+
+
+\begin{lstlisting}[caption=Our tpacf parallel version,style=base]
+int doCompute( ... ){
+	@#pragma omp parallel@{
+		@#pragma omp single@{
+			if (doSelf){
+				n2 = n1;
+				data2 = data1;
+			}
+			size = ((doSelf) ? n1-1 : n1);
+			nthreads = omp_get_num_threads();
+			big_table = (int **) malloc(nthreads * sizeof(int *));
+		}		
+		@#pragma omp for@
+		for (i = 0; i < nthreads; i++)
+			big_table[i] = (int *) malloc((nbins + 1) * sizeof(int));
+		@#pragma omp for private(j)@
+		for (i = 0; i < ((doSelf) ? n1-1 : n1); i++){
+			for (j = ((doSelf) ? i+1 : 0); j < n2; j++){	  
+				while (max > min+1){
+					k = (min + max) / 2;
+					if (dot >= binb[k]) max = k;
+					else min = k;
+				};
+				if (dot >= binb[min]) k = min;					
+				else if (dot < binb[max]) k = max+1;					
+				else k = max;					
+				big_table[omp_get_thread_num()][k]++;
+			}
+			@#pragma omp for private(j)@
+			for (i = 0; i < nbins + 1; i++)
+				for (j = 0; j < nthreads; j++)
+					data_bins[i] += big_table[j][i];			
+			@#pragma omp for@
+				for (i = 0; i < nthreads; i++)
+					free(big_table[i]);
+		}
+	}
+    free(big_table);
+}
+\end{lstlisting}
+
+
 
 \end{document}
